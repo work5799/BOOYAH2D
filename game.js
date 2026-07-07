@@ -2564,6 +2564,9 @@ class GameEngine {
         const mySpawn = (config.spawnPoints && this.net.peer && config.spawnPoints[this.net.peer.id]) || { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
         const pName = document.getElementById('player-name').value.trim() || "Survivor";
         this.player = new Player(mySpawn.x, mySpawn.y, pName);
+        if (this.net && this.net.peer) {
+            this.player.id = this.net.peer.id;
+        }
 
         this.bots = [];
         this.bullets = [];
@@ -2593,6 +2596,44 @@ class GameEngine {
 
         // Boot client loop
         requestAnimationFrame((t) => this.gameLoop(t));
+    }
+
+    migrateToOfflineMode() {
+        if (this.networkRole !== 'client') return;
+
+        // 1. Convert to local Singleplayer mode
+        this.networkRole = 'single';
+
+        // 2. Morph remote players into active local bots
+        this.bots.forEach(b => {
+            if (!b.isBot) {
+                b.isBot = true;
+                b.difficulty = 'easy';
+                b.waypointX = b.x;
+                b.waypointY = b.y;
+                b.aiState = 'patrol';
+                b.targetEnemy = null;
+                b.stateTimer = 0;
+                b.reactionTimer = 0;
+                b.speed = 2.0;
+                b.aimError = 0.42;
+                b.viewDistance = 260;
+                b.shootInterval = 1500;
+
+                // Copy prototype methods to character instance
+                b.updateAI = Bot.prototype.updateAI;
+                b.newWaypoint = Bot.prototype.newWaypoint;
+                b.moveTowards = Bot.prototype.moveTowards;
+                b.aimAndFire = Bot.prototype.aimAndFire;
+                b.aiLootItem = Bot.prototype.aiLootItem;
+            }
+        });
+
+        // 3. Start local storm zones loops
+        if (this.zoneTimerInterval) clearInterval(this.zoneTimerInterval);
+        this.zoneTimerInterval = setInterval(() => this.updateStormTimer(), 1000);
+
+        this.triggerAlert("DISCONNECTED", "Connection lost! Host disconnected. Game converted to local offline mode.");
     }
 
     syncClientState(state) {
@@ -2686,8 +2727,8 @@ class GameEngine {
             }
 
             // Sync active timer
-            const mins = Math.floor(state.stormTimer / 60);
-            const secs = state.stormTimer % 60;
+            const mins = Math.floor((state.stormTimer || 0) / 60);
+            const secs = (state.stormTimer || 0) % 60;
             const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
             const stormTimerEl = document.getElementById('storm-timer');
             if (stormTimerEl) stormTimerEl.textContent = timeStr;
@@ -2704,58 +2745,64 @@ class GameEngine {
             // Populate all entities for drawing
             this.bots = [];
 
-            // Draw host player
-            const hostChar = new Character(state.host.x, state.host.y, "Host", false);
-            hostChar.id = state.host.id || 'host';
-            hostChar.rotation = state.host.rotation;
-            hostChar.health = state.host.health;
-            hostChar.shield = state.host.shield;
-            hostChar.active = state.host.active;
-            hostChar.activeWeaponIndex = state.host.activeWeaponIndex;
-            hostChar.bodyColor = state.host.bodyColor;
-            hostChar.handColor = state.host.handColor;
-            this.bots.push(hostChar);
+            // Draw host player safely
+            if (state.host) {
+                const hostChar = new Character(state.host.x, state.host.y, "Host", false);
+                hostChar.id = state.host.id || 'host';
+                hostChar.rotation = state.host.rotation || 0;
+                hostChar.health = state.host.health || 100;
+                hostChar.shield = state.host.shield || 50;
+                hostChar.active = state.host.active;
+                hostChar.activeWeaponIndex = state.host.activeWeaponIndex || 0;
+                hostChar.bodyColor = state.host.bodyColor;
+                hostChar.handColor = state.host.handColor;
+                this.bots.push(hostChar);
+            }
 
-            // Draw other clients
-            state.players.forEach(p => {
+            // Draw other clients safely
+            const playersList = state.players || [];
+            playersList.forEach(p => {
                 if (p.id === myId || p.peerId === myPeerId) return;
                 const name = (this.net && this.net.clientNames && this.net.clientNames[p.peerId]) || "Player";
                 const char = new Character(p.x, p.y, name, false);
                 char.id = p.id;
-                char.rotation = p.rotation;
-                char.health = p.health;
-                char.shield = p.shield;
+                char.rotation = p.rotation || 0;
+                char.health = p.health || 100;
+                char.shield = p.shield || 50;
                 char.active = p.active;
-                char.activeWeaponIndex = p.activeWeaponIndex;
+                char.activeWeaponIndex = p.activeWeaponIndex || 0;
                 char.bodyColor = p.bodyColor;
                 char.handColor = p.handColor;
                 this.bots.push(char);
             });
 
-            // Draw bots
-            state.bots.forEach(b => {
+            // Draw bots safely
+            const botsList = state.bots || [];
+            botsList.forEach(b => {
                 const char = new Character(b.x, b.y, b.name, true);
                 char.id = b.id;
-                char.rotation = b.rotation;
-                char.health = b.health;
-                char.shield = b.shield;
+                char.rotation = b.rotation || 0;
+                char.health = b.health || 100;
+                char.shield = b.shield || 50;
                 char.active = b.active;
-                char.activeWeaponIndex = b.activeWeaponIndex;
+                char.activeWeaponIndex = b.activeWeaponIndex || 0;
                 char.bodyColor = b.bodyColor;
                 char.handColor = b.handColor;
                 this.bots.push(char);
             });
 
-            // Sync bullets
-            this.bullets = state.bullets.map(b => new Bullet(b.x, b.y, 0, 0, 0, null, 100, b.color));
+            // Sync bullets safely
+            const bulletsList = state.bullets || [];
+            this.bullets = bulletsList.map(b => new Bullet(b.x, b.y, 0, 0, 0, null, 100, b.color));
 
-            // Sync items
-            this.items = state.items.map(i => new Item(i.x, i.y, i.type, i.detail));
+            // Sync items safely
+            const itemsList = state.items || [];
+            this.items = itemsList.map(i => new Item(i.x, i.y, i.type, i.detail));
 
-            // Sync safe zone positions
-            this.safeZone = state.safeZone;
-            this.nextZone = state.nextZone;
-            this.aliveCount = state.aliveCount;
+            // Sync safe zone positions safely
+            if (state.safeZone) this.safeZone = state.safeZone;
+            if (state.nextZone) this.nextZone = state.nextZone;
+            if (state.aliveCount !== undefined) this.aliveCount = state.aliveCount;
 
         } catch (error) {
             console.error("Error in syncClientState:", error);
@@ -3475,9 +3522,7 @@ class NetworkManager {
             }
             
             if (this.isFullyConnected) {
-                alert('Disconnected from Host.');
-                this.game.resetToMenu();
-                this.resetLobbyUI();
+                this.game.migrateToOfflineMode();
             } else {
                 const status = document.getElementById('join-status-text');
                 if (status) {
@@ -3496,9 +3541,7 @@ class NetworkManager {
             }
             
             if (this.isFullyConnected) {
-                alert('Disconnected from Host due to error.');
-                this.game.resetToMenu();
-                this.resetLobbyUI();
+                this.game.migrateToOfflineMode();
             } else {
                 const status = document.getElementById('join-status-text');
                 if (status) {
