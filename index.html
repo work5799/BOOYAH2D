@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BOOYAH 2D - Top-Down Battle Royale</title>
+    <link rel="stylesheet" href="style.css?v=17">
+    <!-- PeerJS for WebRTC P2P Multiplayer Rooms -->
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- Google Fonts for Modern Typography -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="game-container">
+        <!-- Game Canvas -->
+        <canvas id="game-canvas"></canvas>
+
+        <!-- Dynamic Dark overlay background for screens -->
+        <div id="screen-blur"></div>
+
+        <!-- Start Screen -->
+        <div id="start-screen" class="overlay-screen active">
+            <div class="screen-content">
+                <div class="logo-container">
+                    <span class="logo-tag">BATTLE ROYALE</span>
+                    <h1 class="logo-title">BOOYAH<span>2D</span></h1>
+                </div>
+                
+                <div class="input-group">
+                    <label for="player-name">CHOOSE YOUR CODENAME</label>
+                    <input type="text" id="player-name" placeholder="Survivor" maxlength="15" value="Survivor">
+                </div>
+
+                <div class="lobby-tabs">
+                    <button class="tab-btn active" id="tab-singleplayer">SINGLEPLAYER</button>
+                    <button class="tab-btn" id="tab-multiplayer">MULTIPLAYER</button>
+                </div>
+
+                <!-- Singleplayer Settings Section -->
+                <div id="singleplayer-settings" class="tab-panel active">
+                    <div class="settings-group">
+                        <div class="control-select">
+                            <label for="bot-count">TOTAL ENEMY BOTS</label>
+                            <select id="bot-count">
+                                <option value="10">10 Enemies (Quick Match)</option>
+                                <option value="20" selected>20 Enemies (Standard)</option>
+                                <option value="35">35 Enemies (Chaos)</option>
+                            </select>
+                        </div>
+                        <div class="control-select">
+                            <label for="difficulty">BOT DIFFICULTY</label>
+                            <select id="difficulty">
+                                <option value="easy">Recruit (Easy)</option>
+                                <option value="medium" selected>Veteran (Medium)</option>
+                                <option value="hard">Elite (Hard)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="settings-group">
+                        <div class="control-select">
+                            <label for="game-mode">GAME MODE</label>
+                            <select id="game-mode">
+                                <option value="br" selected>Battle Royale (Classic)</option>
+                                <option value="deathmatch">Timed Deathmatch</option>
+                            </select>
+                        </div>
+                        <div class="control-select hidden" id="duration-group">
+                            <label for="match-duration">MATCH DURATION</label>
+                            <select id="match-duration">
+                                <option value="60">1 Minute (Fast)</option>
+                                <option value="180" selected>3 Minutes (Standard)</option>
+                                <option value="300">5 Minutes (Long)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button id="start-btn" class="primary-btn" style="width: 100%; margin-top: 16px;">ENTER BATTLEFIELD</button>
+                </div>
+
+                <!-- Multiplayer Lobby Section -->
+                <div id="multiplayer-settings" class="tab-panel hidden">
+                    <!-- 2-column host/join layout -->
+                    <div class="mp-grid">
+
+                        <!-- Left: Host Match -->
+                        <div class="mp-col">
+                            <div class="mp-section-header">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+                                HOST MATCH
+                            </div>
+
+                            <div id="host-pre" class="mp-pre-section">
+                                <!-- Match settings for host -->
+                                <div class="mp-setting-row">
+                                    <label for="mp-game-mode">GAME MODE</label>
+                                    <select id="mp-game-mode">
+                                        <option value="br" selected>Battle Royale</option>
+                                        <option value="deathmatch">Timed Deathmatch</option>
+                                    </select>
+                                </div>
+                                <div class="mp-setting-row" id="mp-duration-row" style="display:none">
+                                    <label for="mp-match-duration">DURATION</label>
+                                    <select id="mp-match-duration">
+                                        <option value="60">1 Min (Fast)</option>
+                                        <option value="180" selected>3 Min (Standard)</option>
+                                        <option value="300">5 Min (Long)</option>
+                                    </select>
+                                </div>
+                                <div class="mp-setting-row">
+                                    <label for="mp-bot-count">BOT COUNT</label>
+                                    <select id="mp-bot-count">
+                                        <option value="5">5 Bots</option>
+                                        <option value="10" selected>10 Bots</option>
+                                        <option value="20">20 Bots</option>
+                                    </select>
+                                </div>
+                                <button id="host-btn" class="mp-action-btn host-action">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
+                                    CREATE ROOM
+                                </button>
+                            </div>
+
+                            <!-- Room details (shown after creating) -->
+                            <div id="host-details" class="mp-room-details hidden">
+                                <div class="mp-code-box">
+                                    <span class="mp-code-label">ROOM CODE</span>
+                                    <div class="mp-code-row">
+                                        <span id="generated-room-id" class="mp-code-value">-----</span>
+                                        <button id="copy-code-btn" class="mp-copy-btn">
+                                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                                            COPY
+                                        </button>
+                                    </div>
+                                    <span class="mp-code-hint">Share with friends to join</span>
+                                </div>
+                                <div class="mp-players-box">
+                                    <span class="mp-players-label">IN LOBBY</span>
+                                    <ul id="host-member-list" class="mp-players-list">
+                                        <li class="mp-player-self">
+                                            <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+                                            You (Host)
+                                        </li>
+                                    </ul>
+                                </div>
+                                <button id="start-multiplayer-btn" class="mp-action-btn start-action" disabled>
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                    START BATTLEFIELD
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Vertical divider -->
+                        <div class="mp-divider">
+                            <div class="mp-divider-line"></div>
+                            <span>OR</span>
+                            <div class="mp-divider-line"></div>
+                        </div>
+
+                        <!-- Right: Join Match -->
+                        <div class="mp-col">
+                            <div class="mp-section-header">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+                                JOIN MATCH
+                            </div>
+
+                            <p class="mp-join-desc">Enter the room code shared by your friend</p>
+
+                            <div class="mp-join-input-group">
+                                <input type="text" id="join-room-id" class="mp-code-input" placeholder="e.g. BYH43638" maxlength="15" autocomplete="off" spellcheck="false">
+                            </div>
+
+                            <button id="join-btn" class="mp-action-btn join-action">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M10 17l5-5-5-5v10zm-4 0l5-5-5-5v10z"/></svg>
+                                JOIN ROOM
+                            </button>
+
+                            <div id="join-details" class="mp-join-status hidden">
+                                <div class="mp-status-row">
+                                    <span class="mp-status-dot"></span>
+                                    <span id="join-status-text" class="status-connecting">Connecting...</span>
+                                </div>
+                                <ul id="join-member-list" class="mp-players-list"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class="controls-guide">
+                    <h3>CONTROLS GUIDE</h3>
+                    <div class="guide-grid">
+                        <div class="guide-item">
+                            <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span>
+                            <span class="action">Move Player</span>
+                        </div>
+                        <div class="guide-item">
+                            <span class="key mouse">AIM</span>
+                            <span class="action">Aim Gun</span>
+                        </div>
+                        <div class="guide-item">
+                            <span class="key mouse click">L-CLICK</span>
+                            <span class="action">Shoot Bullet</span>
+                        </div>
+                        <div class="guide-item">
+                            <span class="key">F</span> or <span class="key">E</span>
+                            <span class="action">Loot / Pick Item</span>
+                        </div>
+                        <div class="guide-item">
+                            <span class="key">R</span>
+                            <span class="action">Reload Weapon</span>
+                        </div>
+                        <div class="guide-item">
+                            <span class="key">1</span><span class="key">2</span>
+                            <span class="action">Switch Weapon</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- HUD (Heads-Up Display) -->
+        <div id="hud" class="hidden">
+            <!-- Top Left: Stats -->
+            <div class="hud-top-left">
+                <div class="stat-badge">
+                    <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2v-6zm0 8h2v2h-2v-2z"/></svg>
+                    <div class="badge-content">
+                        <span class="badge-label">ALIVE</span>
+                        <span id="hud-alive" class="badge-value">21</span>
+                    </div>
+                </div>
+                <div class="stat-badge danger">
+                    <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+                    <div class="badge-content">
+                        <span class="badge-label">KILLS</span>
+                        <span id="hud-kills" class="badge-value">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Center: Storm Status Warning Banner -->
+            <div id="storm-banner" class="hud-top-center">
+                <div class="storm-indicator">
+                    <span id="storm-status-text">SAFE ZONE SHRINKING IN</span>
+                    <span id="storm-timer">00:45</span>
+                </div>
+            </div>
+
+            <!-- Top Right: Minimap -->
+            <div class="hud-top-right">
+                <div class="minimap-container">
+                    <canvas id="minimap-canvas" width="120" height="120"></canvas>
+                    <span class="map-label">MAP</span>
+                </div>
+            </div>
+
+            <!-- Center Right: Kill Feed -->
+            <div id="kill-feed" class="kill-feed-container">
+                <!-- Javascript will inject kill notifications here -->
+            </div>
+
+            <!-- Center: System Alerts (e.g., Safe Zone Warnings, Reloading, Wins) -->
+            <div id="hud-alert" class="hud-alert-overlay">
+                <div class="hud-alert-inner">
+                    <h2 id="hud-alert-title">STORM SHRINKING!</h2>
+                    <p id="hud-alert-desc">Get inside the safe zone immediately</p>
+                </div>
+            </div>
+
+            <!-- Action Prompt (e.g., "Press F to pick up M416") -->
+            <div id="action-prompt" class="action-prompt hidden">
+                <span class="prompt-key">F</span>
+                <span id="prompt-text">Loot M416</span>
+            </div>
+
+            <!-- Reloading Status Indicator -->
+            <div id="reload-indicator" class="reload-indicator hidden">
+                <div class="spinner"></div>
+                <span>RELOADING...</span>
+            </div>
+
+            <!-- Bottom Left: Health, Shield, Inventory -->
+            <div class="hud-bottom-left">
+                <!-- Health & Shield Bars -->
+                <div class="status-bars">
+                    <!-- Shield / Armor -->
+                    <div class="bar-container shield-bar">
+                        <div class="bar-fill" id="hud-shield-fill" style="width: 100%;"></div>
+                        <span class="bar-label">ARMOR <span id="hud-shield-val">100</span></span>
+                    </div>
+                    <!-- Health -->
+                    <div class="bar-container health-bar">
+                        <div class="bar-fill" id="hud-health-fill" style="width: 100%;"></div>
+                        <span class="bar-label">HEALTH <span id="hud-health-val">100</span></span>
+                    </div>
+                </div>
+
+                <!-- Weapon Slots -->
+                <div class="weapon-slots">
+                    <div id="slot-1" class="weapon-slot active">
+                        <span class="slot-num">1</span>
+                        <div class="slot-details">
+                            <span class="weapon-name" id="slot-1-name">Pistol</span>
+                            <span class="weapon-ammo" id="slot-1-ammo">7/∞</span>
+                        </div>
+                    </div>
+                    <div id="slot-2" class="weapon-slot">
+                        <span class="slot-num">2</span>
+                        <div class="slot-details">
+                            <span class="weapon-name" id="slot-2-name">EMPTY</span>
+                            <span class="weapon-ammo" id="slot-2-ammo">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bottom Right: Fire Mode & Details -->
+            <div class="hud-bottom-right">
+                <div class="ammo-circle">
+                    <div class="ammo-numbers">
+                        <span id="hud-active-ammo">7</span>
+                        <span class="ammo-separator">/</span>
+                        <span id="hud-reserve-ammo">30</span>
+                    </div>
+                    <span id="hud-weapon-type">PISTOL</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Respawn Overlay -->
+        <div id="respawn-overlay" class="overlay-screen">
+            <div class="respawn-content">
+                <span class="respawn-title">ELIMINATED</span>
+                <span class="respawn-timer">RESPAWNING IN <span id="respawn-countdown">3</span>s</span>
+            </div>
+        </div>
+
+        <!-- Victory Screen (BOOYAH!) -->
+        <div id="victory-screen" class="overlay-screen">
+            <div class="screen-content victory">
+                <div class="victory-banner">
+                    <h1 class="bounce-in">BOOYAH!</h1>
+                    <p class="subtitle">#1 VICTORY ROYALE</p>
+                </div>
+                
+                <div class="stats-card">
+                    <h2 class="card-title">MATCH SUMMARY</h2>
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <span class="stat-num" id="vic-kills">12</span>
+                            <span class="stat-lbl">ELIMINATIONS</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-num" id="vic-survival-time">03:45</span>
+                            <span class="stat-lbl">SURVIVAL TIME</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-num" id="vic-damage">1,420</span>
+                            <span class="stat-lbl">DAMAGE DEALT</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stats-card scoreboard-card hidden" id="vic-scoreboard-card">
+                    <h2 class="card-title">FINAL SCOREBOARD</h2>
+                    <div class="scoreboard-list" id="vic-scoreboard-list">
+                        <!-- Scoreboard list injected here -->
+                    </div>
+                </div>
+
+                <div class="victory-footer">
+                    <button class="primary-btn replay-btn">PLAY ANOTHER ROUND</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Defeat / Game Over Screen -->
+        <div id="game-over-screen" class="overlay-screen">
+            <div class="screen-content defeat">
+                <div class="defeat-banner">
+                    <h1>ELIMINATED</h1>
+                    <p class="subtitle">Better luck next time!</p>
+                </div>
+                
+                <div class="stats-card">
+                    <h2 class="card-title">YOUR MATCH STATS</h2>
+                    <div class="stats-grid">
+                        <div class="stat-box">
+                            <span class="stat-num" id="det-rank">#12</span>
+                            <span class="stat-lbl">FINAL RANK</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-num" id="det-kills">3</span>
+                            <span class="stat-lbl">ELIMINATIONS</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-num" id="det-survival-time">01:22</span>
+                            <span class="stat-lbl">SURVIVAL TIME</span>
+                        </div>
+                        <div class="stat-box">
+                            <span class="stat-num" id="det-damage">480</span>
+                            <span class="stat-lbl">DAMAGE DEALT</span>
+                        </div>
+                    </div>
+                    <div class="killer-info">
+                        <span>Eliminated by: <strong id="det-killer" class="danger-text">Bot_Sniper</strong></span>
+                    </div>
+                </div>
+
+                <div class="stats-card scoreboard-card hidden" id="det-scoreboard-card">
+                    <h2 class="card-title">FINAL SCOREBOARD</h2>
+                    <div class="scoreboard-list" id="det-scoreboard-list">
+                        <!-- Scoreboard list injected here -->
+                    </div>
+                </div>
+
+                <div class="defeat-footer">
+                    <button class="primary-btn replay-btn">RE-ENTER COMBAT</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="game.js?v=17"></script>
+</body>
+</html>
