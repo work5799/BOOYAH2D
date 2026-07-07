@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BOOYAH 2D - Top-Down Battle Royale</title>
-    <link rel="stylesheet" href="style.css?v=25">
+    <link rel="stylesheet" href="style.css?v=26">
     <!-- Vercel Web Analytics plain HTML integration -->
     <script>
       window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
@@ -88,10 +88,10 @@
                 <!-- Multiplayer Lobby Section -->
                 <div id="multiplayer-settings" class="tab-panel hidden">
                     <!-- 2-column host/join layout -->
-                    <div class="mp-grid">
+                    <div class="mp-grid" id="mp-lobby-grid">
 
                         <!-- Left: Host Match -->
-                        <div class="mp-col">
+                        <div class="mp-col" id="mp-host-col">
                             <div class="mp-section-header">
                                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
                                 HOST MATCH
@@ -158,29 +158,31 @@
                         </div>
 
                         <!-- Vertical divider -->
-                        <div class="mp-divider">
+                        <div class="mp-divider" id="mp-lobby-divider">
                             <div class="mp-divider-line"></div>
                             <span>OR</span>
                             <div class="mp-divider-line"></div>
                         </div>
 
                         <!-- Right: Join Match -->
-                        <div class="mp-col">
+                        <div class="mp-col" id="mp-join-col">
                             <div class="mp-section-header">
                                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
                                 JOIN MATCH
                             </div>
 
-                            <p class="mp-join-desc">Enter the room code shared by your friend</p>
+                            <div id="join-pre">
+                                <p class="mp-join-desc">Enter the room code shared by your friend</p>
 
-                            <div class="mp-join-input-group">
-                                <input type="text" id="join-room-id" class="mp-code-input" placeholder="e.g. BYH43638" maxlength="15" autocomplete="off" spellcheck="false">
+                                <div class="mp-join-input-group">
+                                    <input type="text" id="join-room-id" class="mp-code-input" placeholder="e.g. BYH43638" maxlength="15" autocomplete="off" spellcheck="false">
+                                </div>
+
+                                <button id="join-btn" class="mp-action-btn join-action">
+                                    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M10 17l5-5-5-5v10zm-4 0l5-5-5-5v10z"/></svg>
+                                    JOIN ROOM
+                                </button>
                             </div>
-
-                            <button id="join-btn" class="mp-action-btn join-action">
-                                <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M10 17l5-5-5-5v10zm-4 0l5-5-5-5v10z"/></svg>
-                                JOIN ROOM
-                            </button>
 
                             <div id="join-details" class="mp-join-status hidden">
                                 <div class="mp-status-row">
@@ -428,6 +430,6 @@
             </div>
         </div>
     </div>
-    <script src="game.js?v=25"></script>
+    <script src="game.js?v=26"></script>
 </body>
 </html>

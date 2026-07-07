@@ -1659,3 +1659,9 @@ select:focus {
     font-style: italic;
 }
 
+.mp-grid.single-col {
+    grid-template-columns: 1fr;
+    max-width: 480px;
+    margin: 0 auto;
+}
+

@@ -3293,6 +3293,14 @@ class NetworkManager {
             document.getElementById('host-details').classList.remove('hidden');
             document.getElementById('generated-room-id').textContent = this.roomId;
 
+            // Hide join options and center host lobby
+            const lobbyGrid = document.getElementById('mp-lobby-grid');
+            const lobbyDivider = document.getElementById('mp-lobby-divider');
+            const joinCol = document.getElementById('mp-join-col');
+            if (lobbyGrid) lobbyGrid.classList.add('single-col');
+            if (lobbyDivider) lobbyDivider.classList.add('hidden');
+            if (joinCol) joinCol.classList.add('hidden');
+
             const list = document.getElementById('host-member-list');
             list.innerHTML = '<li class="mp-player-self"><svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg> You (Host)</li>';
         });
@@ -3325,6 +3333,19 @@ class NetworkManager {
         document.getElementById('host-details').classList.add('hidden');
         document.getElementById('join-btn').removeAttribute('disabled');
         document.getElementById('join-details').classList.add('hidden');
+
+        // Restore lobby layout grid and elements
+        const lobbyGrid = document.getElementById('mp-lobby-grid');
+        const lobbyDivider = document.getElementById('mp-lobby-divider');
+        const hostCol = document.getElementById('mp-host-col');
+        const joinCol = document.getElementById('mp-join-col');
+        const joinPre = document.getElementById('join-pre');
+        if (lobbyGrid) lobbyGrid.classList.remove('single-col');
+        if (lobbyDivider) lobbyDivider.classList.remove('hidden');
+        if (hostCol) hostCol.classList.remove('hidden');
+        if (joinCol) joinCol.classList.remove('hidden');
+        if (joinPre) joinPre.classList.remove('hidden');
+
         this.game.networkRole = 'single';
         this.roomId = '';
         if (this.handshakeTimeout) {
@@ -3465,6 +3486,16 @@ class NetworkManager {
         if (this.handshakeTimeout) {
             clearTimeout(this.handshakeTimeout);
         }
+
+        // Hide host options, divider, and code inputs for clients
+        const lobbyGrid = document.getElementById('mp-lobby-grid');
+        const lobbyDivider = document.getElementById('mp-lobby-divider');
+        const hostCol = document.getElementById('mp-host-col');
+        const joinPre = document.getElementById('join-pre');
+        if (lobbyGrid) lobbyGrid.classList.add('single-col');
+        if (lobbyDivider) lobbyDivider.classList.add('hidden');
+        if (hostCol) hostCol.classList.add('hidden');
+        if (joinPre) joinPre.classList.add('hidden');
 
         document.getElementById('join-btn').setAttribute('disabled', 'true');
         document.getElementById('join-details').classList.remove('hidden');
