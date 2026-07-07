@@ -1486,10 +1486,21 @@ class GameEngine {
         let ry = WORLD_SIZE / 2;
         let ok = false;
         let limit = 0;
+
+        const sz = this.safeZone || { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2, r: WORLD_SIZE / 2 };
+        const maxDist = Math.max(50, sz.r - 60);
+
         while (!ok && limit < 150) {
             limit++;
-            rx = Math.random() * (WORLD_SIZE - 240) + 120;
-            ry = Math.random() * (WORLD_SIZE - 240) + 120;
+            const angle = Math.random() * Math.PI * 2;
+            const dist = Math.random() * maxDist;
+            rx = sz.x + Math.cos(angle) * dist;
+            ry = sz.y + Math.sin(angle) * dist;
+
+            // Constrain within map boundaries (excluding outer wall pad)
+            rx = Math.max(120, Math.min(WORLD_SIZE - 120, rx));
+            ry = Math.max(120, Math.min(WORLD_SIZE - 120, ry));
+
             if (!this.checkCollidesWithObstacles(rx, ry, radius)) {
                 ok = true;
             }
@@ -3291,7 +3302,7 @@ class NetworkManager {
             document.getElementById('start-multiplayer-btn').removeAttribute('disabled');
         } else if (data.type === 'input') {
             try {
-                const char = this.game.bots.find(b => b.peerConn === conn);
+                const char = this.game.bots.find(b => b.id === conn.peer || (b.peerConn && b.peerConn.peer === conn.peer));
                 if (char && char.active) {
                     char.inputs = data.inputs;
                     char.rotation = data.rotation;
@@ -3372,7 +3383,7 @@ class NetworkManager {
             this.connections.splice(idx, 1);
         }
 
-        const charIdx = this.game.bots.findIndex(b => b.peerConn === conn);
+        const charIdx = this.game.bots.findIndex(b => b.id === conn.peer || (b.peerConn && b.peerConn.peer === conn.peer));
         if (charIdx !== -1) {
             const char = this.game.bots[charIdx];
             this.game.pushKillFeed("Lobby", `${char.name} disconnected`, "System");
