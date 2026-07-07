@@ -73,6 +73,22 @@ const STATES = {
     GAMEOVER: 'gameover'
 };
 
+// Premium Character Colors list
+const CHARACTER_COLORS = [
+    { body: "#3b82f6", hand: "#93c5fd" }, // Blue
+    { body: "#10b981", hand: "#6ee7b7" }, // Green
+    { body: "#f59e0b", hand: "#fde047" }, // Orange/Yellow
+    { body: "#8b5cf6", hand: "#c4b5fd" }, // Purple
+    { body: "#ec4899", hand: "#fbcfe8" }, // Pink
+    { body: "#06b6d4", hand: "#67e8f9" }, // Cyan
+    { body: "#ef4444", hand: "#fca5a5" }, // Red
+    { body: "#14b8a6", hand: "#5eead4" }, // Teal
+    { body: "#f97316", hand: "#ffedd5" }, // Deep Orange
+    { body: "#84cc16", hand: "#bef264" }, // Lime
+    { body: "#6366f1", hand: "#c7d2fe" }  // Indigo
+];
+
+
 // --- AUDIO SYNTHESIZER (Web Audio API) ---
 class SoundSynth {
     constructor() {
@@ -564,6 +580,11 @@ class Character extends Entity {
         this.damageDealt = 0;
         this.survivalTimeStart = Date.now();
 
+        // Assign a unique random color set
+        const colorSet = CHARACTER_COLORS[Math.floor(Math.random() * CHARACTER_COLORS.length)];
+        this.bodyColor = colorSet.body;
+        this.handColor = colorSet.hand;
+
         // Weapon inventory (2 slots)
         this.weapons = ['pistol', null]; // Starts with Pistol in Slot 1
         this.activeWeaponIndex = 0;
@@ -817,7 +838,7 @@ class Character extends Entity {
         // Draw Body (Outer circle ring + center base)
         ctx.beginPath();
         ctx.arc(0, 0, this.radius, 0, Math.PI * 2);
-        ctx.fillStyle = this.isBot ? "#dc2626" : "#2563eb"; // Enemy is red, player is blue
+        ctx.fillStyle = this.bodyColor || (this.isBot ? "#ef4444" : "#3b82f6");
         ctx.fill();
         ctx.strokeStyle = "#ffffff";
         ctx.lineWidth = 2.5;
@@ -827,7 +848,7 @@ class Character extends Entity {
         ctx.beginPath();
         ctx.arc(this.radius - 2, -this.radius / 2 - 2, 6, 0, Math.PI * 2); // left hand
         ctx.arc(this.radius - 2, this.radius / 2 + 2, 6, 0, Math.PI * 2); // right hand
-        ctx.fillStyle = this.isBot ? "#ef4444" : "#60a5fa";
+        ctx.fillStyle = this.handColor || (this.isBot ? "#fca5a5" : "#93c5fd");
         ctx.fill();
         ctx.stroke();
 
@@ -1127,7 +1148,7 @@ class GameEngine {
         this.inputs = {
             w: false, a: false, s: false, d: false,
             f: false, e: false, r: false,
-            1: false, 2: false
+            1: false, 2: false, loot: false
         };
         this.mouse = { x: 0, y: 0 };
         this.viewport = { x: 0, y: 0, w: 0, h: 0 };
@@ -1317,7 +1338,11 @@ class GameEngine {
 
         // Loot action keys
         if (key === 'f' || key === 'e') {
-            this.checkLootAction();
+            if (this.networkRole === 'client') {
+                this.inputs.loot = true;
+            } else {
+                this.checkLootAction();
+            }
         }
 
         // Reload key
@@ -1365,15 +1390,28 @@ class GameEngine {
         document.getElementById('det-scoreboard-card').classList.add('hidden');
         document.querySelector('.killer-info').classList.remove('hidden');
 
-        // Setup Entities
-        this.player = new Player(WORLD_SIZE / 2, WORLD_SIZE / 2, playerName);
+        // Reset and clear arrays first (so obstacles is populated before spawning characters)
+        this.bullets = [];
+        this.items = [];
+        this.obstacles = [];
+        this.particles = [];
+        this.damageTexts = [];
+        this.respawnQueue = [];
+
+        // Generate environment obstacles first
+        this.generateMapObstacles();
+
+        // Setup Host Player at a random safe spawn point
+        const hostSpawn = this.getRandomSpawnPoint(20);
+        this.player = new Player(hostSpawn.x, hostSpawn.y, playerName);
         
-        // Preserve client players in multiplayer host mode
+        // Preserve client players in multiplayer host mode and spawn them at distinct safe spawn points
         const joinedClients = this.bots.filter(b => !b.isBot);
         this.bots = [];
         joinedClients.forEach(c => {
-            c.x = WORLD_SIZE / 2 + (Math.random() - 0.5) * 100;
-            c.y = WORLD_SIZE / 2 + (Math.random() - 0.5) * 100;
+            const clientSpawn = this.getRandomSpawnPoint(20);
+            c.x = clientSpawn.x;
+            c.y = clientSpawn.y;
             c.active = true;
             c.health = c.maxHealth;
             c.shield = c.maxShield;
@@ -1383,16 +1421,6 @@ class GameEngine {
             c.activeWeaponIndex = 0;
             this.bots.push(c);
         });
-
-        this.bullets = [];
-        this.items = [];
-        this.obstacles = [];
-        this.particles = [];
-        this.damageTexts = [];
-        this.respawnQueue = [];
-
-        // Generate environment obstacles
-        this.generateMapObstacles();
 
         // Spawn Bots
         this.spawnBots(botCount, difficulty);
@@ -1427,6 +1455,22 @@ class GameEngine {
         
         // Boot gameloop
         requestAnimationFrame((t) => this.gameLoop(t));
+    }
+
+    getRandomSpawnPoint(radius = 20) {
+        let rx = WORLD_SIZE / 2;
+        let ry = WORLD_SIZE / 2;
+        let ok = false;
+        let limit = 0;
+        while (!ok && limit < 150) {
+            limit++;
+            rx = Math.random() * (WORLD_SIZE - 240) + 120;
+            ry = Math.random() * (WORLD_SIZE - 240) + 120;
+            if (!this.checkCollidesWithObstacles(rx, ry, radius)) {
+                ok = true;
+            }
+        }
+        return { x: rx, y: ry };
     }
 
     resetToMenu() {
@@ -1491,20 +1535,9 @@ class GameEngine {
         ];
 
         for (let i = 0; i < count; i++) {
-            let bx, by;
-            let ok = false;
-            while (!ok) {
-                bx = Math.random() * (WORLD_SIZE - 200) + 100;
-                by = Math.random() * (WORLD_SIZE - 200) + 100;
-                
-                // Safe distance from player spawn
-                const distToPlayer = Math.hypot(WORLD_SIZE/2 - bx, WORLD_SIZE/2 - by);
-                if (distToPlayer > 350 && !this.checkCollidesWithObstacles(bx, by, 20)) {
-                    ok = true;
-                }
-            }
+            const spawn = this.getRandomSpawnPoint(20);
             const botName = names[i % names.length] + `_${Math.floor(Math.random() * 90 + 10)}`;
-            this.bots.push(new Bot(bx, by, botName, difficulty));
+            this.bots.push(new Bot(spawn.x, spawn.y, botName, difficulty));
         }
     }
 
@@ -1888,12 +1921,18 @@ class GameEngine {
     }
 
     checkLootAction() {
+        if (this.player && this.player.active) {
+            this.checkCharacterLoot(this.player);
+        }
+    }
+
+    checkCharacterLoot(char) {
         let nearestItem = null;
         let minDist = 75;
 
         for (let item of this.items) {
             if (!item.active) continue;
-            const dist = Math.hypot(item.x - this.player.x, item.y - this.player.y);
+            const dist = Math.hypot(item.x - char.x, item.y - char.y);
             if (dist < minDist) {
                 nearestItem = item;
                 minDist = dist;
@@ -1905,49 +1944,56 @@ class GameEngine {
         let looted = false;
         
         if (nearestItem.type === ITEM_TYPES.weapon) {
-            // Slot logic
             const wKey = nearestItem.detail;
             
-            // If primary slot is empty or pistol, replace it. Otherwise try to insert in slot 2.
-            if (this.player.weapons[0] === 'pistol' && wKey !== 'pistol') {
-                this.player.weapons[0] = wKey;
-                this.player.ammoInMag[wKey] = WEAPONS[wKey].magazineSize;
-                this.player.reserveAmmo[wKey] = WEAPONS[wKey].reserveAmmo;
+            // If primary slot is empty or pistol, replace it.
+            if (char.weapons[0] === 'pistol' && wKey !== 'pistol') {
+                char.weapons[0] = wKey;
+                char.ammoInMag[wKey] = WEAPONS[wKey].magazineSize;
+                char.reserveAmmo[wKey] = WEAPONS[wKey].reserveAmmo;
                 looted = true;
-            } else if (!this.player.weapons[1]) {
-                this.player.weapons[1] = wKey;
-                this.player.ammoInMag[wKey] = WEAPONS[wKey].magazineSize;
-                this.player.reserveAmmo[wKey] = WEAPONS[wKey].reserveAmmo;
+            } else if (!char.weapons[1]) {
+                char.weapons[1] = wKey;
+                char.ammoInMag[wKey] = WEAPONS[wKey].magazineSize;
+                char.reserveAmmo[wKey] = WEAPONS[wKey].reserveAmmo;
                 looted = true;
-                this.player.activeWeaponIndex = 1; // auto-equip
+                char.activeWeaponIndex = 1; // auto-equip
             } else {
                 // Drop current weapon on ground and replace it
-                const currentEquipped = this.player.weapons[this.player.activeWeaponIndex];
+                const currentEquipped = char.weapons[char.activeWeaponIndex];
                 
-                this.player.weapons[this.player.activeWeaponIndex] = wKey;
-                this.player.ammoInMag[wKey] = WEAPONS[wKey].magazineSize;
-                this.player.reserveAmmo[wKey] = WEAPONS[wKey].reserveAmmo;
+                char.weapons[char.activeWeaponIndex] = wKey;
+                char.ammoInMag[wKey] = WEAPONS[wKey].magazineSize;
+                char.reserveAmmo[wKey] = WEAPONS[wKey].reserveAmmo;
                 looted = true;
                 
                 // Spawn old gun back on ground
                 if (currentEquipped) {
-                    this.items.push(new Item(this.player.x, this.player.y, ITEM_TYPES.weapon, currentEquipped));
+                    this.items.push(new Item(char.x, char.y, ITEM_TYPES.weapon, currentEquipped));
                 }
             }
         } else if (nearestItem.type === ITEM_TYPES.ammo) {
-            const wKey = nearestItem.detail || this.player.weapons[this.player.activeWeaponIndex];
-            this.player.reserveAmmo[wKey] = (this.player.reserveAmmo[wKey] || 0) + 30;
+            const wKey = nearestItem.detail || char.weapons[char.activeWeaponIndex];
+            char.reserveAmmo[wKey] = (char.reserveAmmo[wKey] || 0) + 30;
             looted = true;
-            if (!this.player.isBot) sfx.playReload();
+            if (!char.isBot) {
+                if (char.peerConn) {
+                    char.peerConn.send({ type: 'sfx', sfx: 'reload' });
+                } else {
+                    sfx.playReload();
+                }
+            }
         } else if (nearestItem.type === ITEM_TYPES.medkit) {
-            looted = this.player.heal(40);
+            looted = char.heal(40);
         } else if (nearestItem.type === ITEM_TYPES.shield) {
-            looted = this.player.shieldUp(50);
+            looted = char.shieldUp(50);
         }
 
         if (looted) {
             nearestItem.active = false;
-            this.updateHUD();
+            if (!char.isBot && !char.peerConn) {
+                this.updateHUD();
+            }
         }
     }
 
@@ -2408,27 +2454,11 @@ class GameEngine {
     }
 
     respawnCharacter(char) {
-        // Find safe spawn spot
-        let rx, ry;
-        let ok = false;
-        let limit = 0;
+        // Find safe spawn spot using the helper
+        const spawn = this.getRandomSpawnPoint(char.radius);
         
-        while (!ok && limit < 100) {
-            limit++;
-            rx = Math.random() * (WORLD_SIZE - 200) + 100;
-            ry = Math.random() * (WORLD_SIZE - 200) + 100;
-            if (!this.checkCollidesWithObstacles(rx, ry, char.radius)) {
-                ok = true;
-            }
-        }
-        
-        if (!ok) {
-            rx = WORLD_SIZE / 2;
-            ry = WORLD_SIZE / 2;
-        }
-
-        char.x = rx;
-        char.y = ry;
+        char.x = spawn.x;
+        char.y = spawn.y;
         char.active = true;
         char.health = char.maxHealth;
         char.shield = char.maxShield;
@@ -2541,6 +2571,12 @@ class GameEngine {
             this.player.kills = myState.kills;
             this.player.deaths = myState.deaths;
             this.player.active = myState.active;
+            
+            // Sync inventory, active slot index, and colors authoritative states
+            if (myState.weapons) this.player.weapons = myState.weapons;
+            this.player.activeWeaponIndex = myState.activeWeaponIndex;
+            this.player.bodyColor = myState.bodyColor;
+            this.player.handColor = myState.handColor;
 
             // Sync HUD items
             document.getElementById('hud-health-fill').style.width = `${myState.health}%`;
@@ -2554,6 +2590,31 @@ class GameEngine {
             // Sync active weapon text
             document.getElementById('hud-active-ammo').textContent = myState.ammo;
             document.getElementById('hud-reserve-ammo').textContent = myState.reserve;
+
+            // Update slot HUD displays locally
+            for (let i = 0; i < 2; i++) {
+                const slot = document.getElementById(`slot-${i+1}`);
+                const nameEl = document.getElementById(`slot-${i+1}-name`);
+                const ammoEl = document.getElementById(`slot-${i+1}-ammo`);
+
+                const wKey = this.player.weapons[i];
+                if (wKey) {
+                    const weapon = WEAPONS[wKey];
+                    nameEl.textContent = weapon.name;
+                    const activeAmmo = this.player.ammoInMag[wKey];
+                    const reserve = wKey === 'pistol' ? '∞' : (this.player.reserveAmmo[wKey] || 0);
+                    ammoEl.textContent = `${activeAmmo}/${reserve}`;
+                } else {
+                    nameEl.textContent = "EMPTY";
+                    ammoEl.textContent = "-";
+                }
+
+                if (this.player.activeWeaponIndex === i) {
+                    slot.classList.add('active');
+                } else {
+                    slot.classList.remove('active');
+                }
+            }
 
             // Respawn screen display toggle
             if (!myState.active) {
@@ -2585,6 +2646,8 @@ class GameEngine {
         hostChar.shield = state.host.shield;
         hostChar.active = state.host.active;
         hostChar.activeWeaponIndex = state.host.activeWeaponIndex;
+        hostChar.bodyColor = state.host.bodyColor;
+        hostChar.handColor = state.host.handColor;
         this.bots.push(hostChar);
 
         // Draw other clients
@@ -2597,6 +2660,8 @@ class GameEngine {
             char.shield = p.shield;
             char.active = p.active;
             char.activeWeaponIndex = p.activeWeaponIndex;
+            char.bodyColor = p.bodyColor;
+            char.handColor = p.handColor;
             this.bots.push(char);
         });
 
@@ -2608,6 +2673,8 @@ class GameEngine {
             char.shield = b.shield;
             char.active = b.active;
             char.activeWeaponIndex = b.activeWeaponIndex;
+            char.bodyColor = b.bodyColor;
+            char.handColor = b.handColor;
             this.bots.push(char);
         });
 
@@ -2636,11 +2703,14 @@ class GameEngine {
                 health: p.health,
                 shield: p.shield,
                 activeWeaponIndex: p.activeWeaponIndex,
+                weapons: p.weapons,
                 ammo: p.ammoInMag[p.weapons[p.activeWeaponIndex]],
                 reserve: p.reserveAmmo[p.weapons[p.activeWeaponIndex]],
                 kills: p.kills,
                 deaths: p.deaths || 0,
-                active: p.active
+                active: p.active,
+                bodyColor: p.bodyColor,
+                handColor: p.handColor
             })),
             host: {
                 x: this.player.x,
@@ -2653,7 +2723,9 @@ class GameEngine {
                 reserve: this.player.reserveAmmo[this.player.weapons[this.player.activeWeaponIndex]],
                 kills: this.player.kills,
                 deaths: this.player.deaths || 0,
-                active: this.player.active
+                active: this.player.active,
+                bodyColor: this.player.bodyColor,
+                handColor: this.player.handColor
             },
             bots: this.bots.filter(b => b.isBot).map(b => ({
                 name: b.name,
@@ -2663,7 +2735,9 @@ class GameEngine {
                 health: b.health,
                 shield: b.shield,
                 activeWeaponIndex: b.activeWeaponIndex,
-                active: b.active
+                active: b.active,
+                bodyColor: b.bodyColor,
+                handColor: b.handColor
             })),
             bullets: this.bullets.map(bul => ({
                 x: bul.x,
@@ -2738,10 +2812,12 @@ class GameEngine {
             rotation: rotation,
             weaponIndex: this.player.activeWeaponIndex,
             shoot: this.mouse.clickTriggered || false,
-            reload: this.inputs.r
+            reload: this.inputs.r,
+            loot: this.inputs.loot || false
         });
 
         this.mouse.clickTriggered = false;
+        this.inputs.loot = false;
     }
 
     // Handle incoming data on the client side from the host
@@ -3158,6 +3234,9 @@ class NetworkManager {
                 if (data.reload) {
                     char.reload();
                     this.game.broadcastSFX('reload');
+                }
+                if (data.loot) {
+                    this.game.checkCharacterLoot(char);
                 }
             }
         }
