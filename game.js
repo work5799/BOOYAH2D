@@ -3290,22 +3290,24 @@ class NetworkManager {
 
             document.getElementById('start-multiplayer-btn').removeAttribute('disabled');
         } else if (data.type === 'input') {
-            const char = this.game.bots.find(b => b.peerConn === conn);
-            if (char && char.active) {
-                char.inputs = data.inputs;
-                char.rotation = data.rotation;
-                char.activeWeaponIndex = data.weaponIndex;
-                if (data.shoot) {
-                    char.shoot();
-                    this.game.broadcastSFX(WEAPONS[char.weapons[char.activeWeaponIndex]].sfx);
+            try {
+                const char = this.game.bots.find(b => b.peerConn === conn);
+                if (char && char.active) {
+                    char.inputs = data.inputs;
+                    char.rotation = data.rotation;
+                    char.activeWeaponIndex = data.weaponIndex;
+                    if (data.shoot) {
+                        char.shoot(); // Shoot handler already triggers broadcastSFX internally
+                    }
+                    if (data.reload) {
+                        char.reload(); // Reload handler already triggers broadcastSFX internally
+                    }
+                    if (data.loot) {
+                        this.game.checkCharacterLoot(char);
+                    }
                 }
-                if (data.reload) {
-                    char.reload();
-                    this.game.broadcastSFX('reload');
-                }
-                if (data.loot) {
-                    this.game.checkCharacterLoot(char);
-                }
+            } catch (err) {
+                console.error("Error processing host input:", err);
             }
         }
     }
