@@ -579,6 +579,7 @@ class Character extends Entity {
         this.kills = 0;
         this.damageDealt = 0;
         this.survivalTimeStart = Date.now();
+        this.spawnProtectionTimer = 5000; // 5 seconds invincibility on spawn
 
         // Assign a unique random color set
         const colorSet = CHARACTER_COLORS[Math.floor(Math.random() * CHARACTER_COLORS.length)];
@@ -618,7 +619,7 @@ class Character extends Entity {
     }
 
     takeDamage(amount, sourceName) {
-        if (!this.active) return 0;
+        if (!this.active || this.spawnProtectionTimer > 0) return 0;
         
         let initialHealth = this.health;
         let finalDamage = amount;
@@ -1423,6 +1424,7 @@ class GameEngine {
         const hostSpawn = this.getRandomSpawnPoint(20);
         this.player = new Player(hostSpawn.x, hostSpawn.y, playerName);
         this.player.id = 'host';
+        this.player.spawnProtectionTimer = 5000;
         
         // Preserve client players in multiplayer host mode and spawn them at distinct safe spawn points
         const joinedClients = this.bots.filter(b => !b.isBot);
@@ -1439,6 +1441,7 @@ class GameEngine {
             c.deaths = 0;
             c.weapons = ['pistol', null];
             c.activeWeaponIndex = 0;
+            c.spawnProtectionTimer = 5000;
             if (c.peerConn) {
                 c.id = c.peerConn.peer; // Ensure remote client ID matches their connection peer ID
                 this.spawnPoints[c.peerConn.peer] = { x: c.x, y: c.y };
@@ -1684,11 +1687,17 @@ class GameEngine {
             this.updatePlayerRotation();
             this.player.updateReload(deltaTime);
             this.player.isStunned = false; // decay stun
+            if (this.player.spawnProtectionTimer > 0) {
+                this.player.spawnProtectionTimer -= deltaTime;
+            }
         }
 
         // 2. Update Bots AI and actions
         for (let bot of this.bots) {
             if (bot.active) {
+                if (bot.spawnProtectionTimer > 0) {
+                    bot.spawnProtectionTimer -= deltaTime;
+                }
                 if (!bot.isBot && bot.inputs) {
                     // Update connected client player movement on host
                     let dx = 0;
@@ -1699,9 +1708,9 @@ class GameEngine {
                     if (bot.inputs.d) dx += 1;
                     
                     if (dx !== 0 && dy !== 0) {
-                        const len = Math.hypot(dx, dy);
-                        dx /= len;
-                        dy /= len;
+                         const len = Math.hypot(dx, dy);
+                         dx /= len;
+                         dy /= len;
                     }
                     bot.x += dx * bot.speed;
                     bot.y += dy * bot.speed;
@@ -2497,6 +2506,7 @@ class GameEngine {
         char.active = true;
         char.health = char.maxHealth;
         char.shield = char.maxShield;
+        char.spawnProtectionTimer = 5000;
 
         // Reset starting weapons
         char.weapons = ['pistol', null];
@@ -3326,6 +3336,9 @@ class NetworkManager {
     handleHostData(conn, data) {
         if (data.type === 'handshake') {
             this.clientNames[conn.peer] = data.name;
+
+            // Remove any existing character with the same peer ID to prevent duplicates
+            this.game.bots = this.game.bots.filter(b => b.id !== conn.peer);
 
             // Spawn remote player Character
             const rx = WORLD_SIZE / 2 + (Math.random() - 0.5) * 80;
