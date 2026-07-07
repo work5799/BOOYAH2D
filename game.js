@@ -585,6 +585,11 @@ class Character extends Entity {
         this.bodyColor = colorSet.body;
         this.handColor = colorSet.hand;
 
+        // Unique ID for state synchronization
+        this.id = isBot 
+            ? `bot_${Math.random().toString(36).substr(2, 9)}`
+            : `player_${Math.random().toString(36).substr(2, 9)}`;
+
         // Weapon inventory (2 slots)
         this.weapons = ['pistol', null]; // Starts with Pistol in Slot 1
         this.activeWeaponIndex = 0;
@@ -1417,6 +1422,7 @@ class GameEngine {
         // Setup Host Player at a random safe spawn point
         const hostSpawn = this.getRandomSpawnPoint(20);
         this.player = new Player(hostSpawn.x, hostSpawn.y, playerName);
+        this.player.id = 'host';
         
         // Preserve client players in multiplayer host mode and spawn them at distinct safe spawn points
         const joinedClients = this.bots.filter(b => !b.isBot);
@@ -1433,7 +1439,10 @@ class GameEngine {
             c.deaths = 0;
             c.weapons = ['pistol', null];
             c.activeWeaponIndex = 0;
-            this.spawnPoints[c.peerConn.peer] = { x: c.x, y: c.y };
+            if (c.peerConn) {
+                c.id = c.peerConn.peer; // Ensure remote client ID matches their connection peer ID
+                this.spawnPoints[c.peerConn.peer] = { x: c.x, y: c.y };
+            }
             this.bots.push(c);
         });
 
@@ -2578,133 +2587,168 @@ class GameEngine {
     syncClientState(state) {
         if (this.networkRole !== 'client') return;
 
-        // Find matching player entity representing client
-        const myState = state.players.find(p => p.peerId === this.net.peer.id);
-        if (myState) {
-            this.player.x = myState.x;
-            this.player.y = myState.y;
-            this.player.health = myState.health;
-            this.player.shield = myState.shield;
-            this.player.kills = myState.kills;
-            this.player.deaths = myState.deaths;
-            this.player.active = myState.active;
-            
-            // Sync inventory, active slot index, and colors authoritative states
-            if (myState.weapons) this.player.weapons = myState.weapons;
-            this.player.activeWeaponIndex = myState.activeWeaponIndex;
-            this.player.bodyColor = myState.bodyColor;
-            this.player.handColor = myState.handColor;
+        try {
+            const myPeerId = (this.net && this.net.peer) ? this.net.peer.id : null;
+            const myId = (this.player && this.player.id) ? this.player.id : myPeerId;
 
-            // Sync HUD items
-            document.getElementById('hud-health-fill').style.width = `${myState.health}%`;
-            document.getElementById('hud-health-val').textContent = Math.round(myState.health);
-            document.getElementById('hud-shield-fill').style.width = `${myState.shield}%`;
-            document.getElementById('hud-shield-val').textContent = Math.round(myState.shield);
-
-            document.getElementById('hud-kills').textContent = myState.kills;
-            document.getElementById('hud-alive').textContent = state.aliveCount;
-
-            // Sync active weapon text
-            document.getElementById('hud-active-ammo').textContent = myState.ammo;
-            document.getElementById('hud-reserve-ammo').textContent = myState.reserve;
-
-            // Update slot HUD displays locally
-            for (let i = 0; i < 2; i++) {
-                const slot = document.getElementById(`slot-${i+1}`);
-                const nameEl = document.getElementById(`slot-${i+1}-name`);
-                const ammoEl = document.getElementById(`slot-${i+1}-ammo`);
-
-                const wKey = this.player.weapons[i];
-                if (wKey) {
-                    const weapon = WEAPONS[wKey];
-                    nameEl.textContent = weapon.name;
-                    const activeAmmo = this.player.ammoInMag[wKey];
-                    const reserve = wKey === 'pistol' ? '∞' : (this.player.reserveAmmo[wKey] || 0);
-                    ammoEl.textContent = `${activeAmmo}/${reserve}`;
-                } else {
-                    nameEl.textContent = "EMPTY";
-                    ammoEl.textContent = "-";
+            // Find matching player entity representing client by ID or peer ID fallback
+            const myState = state.players.find(p => p.id === myId || p.peerId === myPeerId);
+            if (myState) {
+                if (this.player) {
+                    this.player.x = myState.x;
+                    this.player.y = myState.y;
+                    this.player.health = myState.health;
+                    this.player.shield = myState.shield;
+                    this.player.kills = myState.kills;
+                    this.player.deaths = myState.deaths;
+                    this.player.active = myState.active;
+                    
+                    // Sync inventory, active slot index, and colors authoritative states
+                    if (myState.weapons) this.player.weapons = myState.weapons;
+                    this.player.activeWeaponIndex = myState.activeWeaponIndex;
+                    this.player.bodyColor = myState.bodyColor;
+                    this.player.handColor = myState.handColor;
                 }
 
-                if (this.player.activeWeaponIndex === i) {
-                    slot.classList.add('active');
-                } else {
-                    slot.classList.remove('active');
+                // Sync HUD items
+                const hFill = document.getElementById('hud-health-fill');
+                const hVal = document.getElementById('hud-health-val');
+                const sFill = document.getElementById('hud-shield-fill');
+                const sVal = document.getElementById('hud-shield-val');
+
+                if (hFill) hFill.style.width = `${myState.health}%`;
+                if (hVal) hVal.textContent = Math.round(myState.health);
+                if (sFill) sFill.style.width = `${myState.shield}%`;
+                if (sVal) sVal.textContent = Math.round(myState.shield);
+
+                const hKills = document.getElementById('hud-kills');
+                const hAlive = document.getElementById('hud-alive');
+                if (hKills) hKills.textContent = myState.kills;
+                if (hAlive) hAlive.textContent = state.aliveCount;
+
+                // Sync active weapon text
+                const hActiveAmmo = document.getElementById('hud-active-ammo');
+                const hReserveAmmo = document.getElementById('hud-reserve-ammo');
+                if (hActiveAmmo) hActiveAmmo.textContent = myState.ammo;
+                if (hReserveAmmo) hReserveAmmo.textContent = myState.reserve;
+
+                // Update slot HUD displays locally
+                for (let i = 0; i < 2; i++) {
+                    const slot = document.getElementById(`slot-${i+1}`);
+                    const nameEl = document.getElementById(`slot-${i+1}-name`);
+                    const ammoEl = document.getElementById(`slot-${i+1}-ammo`);
+
+                    if (this.player && this.player.weapons) {
+                        const wKey = this.player.weapons[i];
+                        if (wKey) {
+                            const weapon = WEAPONS[wKey];
+                            if (nameEl && weapon) nameEl.textContent = weapon.name;
+                            if (ammoEl) {
+                                const activeAmmo = this.player.ammoInMag[wKey];
+                                const reserve = wKey === 'pistol' ? '∞' : (this.player.reserveAmmo[wKey] || 0);
+                                ammoEl.textContent = `${activeAmmo}/${reserve}`;
+                            }
+                        } else {
+                            if (nameEl) nameEl.textContent = "EMPTY";
+                            if (ammoEl) ammoEl.textContent = "-";
+                        }
+                    }
+
+                    if (slot && this.player) {
+                        if (this.player.activeWeaponIndex === i) {
+                            slot.classList.add('active');
+                        } else {
+                            slot.classList.remove('active');
+                        }
+                    }
+                }
+
+                // Respawn screen display toggle
+                const respawnOverlay = document.getElementById('respawn-overlay');
+                if (respawnOverlay) {
+                    if (!myState.active) {
+                        respawnOverlay.classList.add('active');
+                    } else {
+                        respawnOverlay.classList.remove('active');
+                    }
                 }
             }
 
-            // Respawn screen display toggle
-            if (!myState.active) {
-                document.getElementById('respawn-overlay').classList.add('active');
-            } else {
-                document.getElementById('respawn-overlay').classList.remove('active');
+            // Sync active timer
+            const mins = Math.floor(state.stormTimer / 60);
+            const secs = state.stormTimer % 60;
+            const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+            const stormTimerEl = document.getElementById('storm-timer');
+            if (stormTimerEl) stormTimerEl.textContent = timeStr;
+
+            const stormStatusEl = document.getElementById('storm-status-text');
+            if (stormStatusEl) {
+                if (this.gameMode === 'deathmatch') {
+                    stormStatusEl.textContent = "TIME REMAINING";
+                } else {
+                    stormStatusEl.textContent = state.isZoneShrinking ? "SAFE ZONE CONTRACTING" : "SAFE ZONE SHRINKING IN";
+                }
             }
+
+            // Populate all entities for drawing
+            this.bots = [];
+
+            // Draw host player
+            const hostChar = new Character(state.host.x, state.host.y, "Host", false);
+            hostChar.id = state.host.id || 'host';
+            hostChar.rotation = state.host.rotation;
+            hostChar.health = state.host.health;
+            hostChar.shield = state.host.shield;
+            hostChar.active = state.host.active;
+            hostChar.activeWeaponIndex = state.host.activeWeaponIndex;
+            hostChar.bodyColor = state.host.bodyColor;
+            hostChar.handColor = state.host.handColor;
+            this.bots.push(hostChar);
+
+            // Draw other clients
+            state.players.forEach(p => {
+                if (p.id === myId || p.peerId === myPeerId) return;
+                const name = (this.net && this.net.clientNames && this.net.clientNames[p.peerId]) || "Player";
+                const char = new Character(p.x, p.y, name, false);
+                char.id = p.id;
+                char.rotation = p.rotation;
+                char.health = p.health;
+                char.shield = p.shield;
+                char.active = p.active;
+                char.activeWeaponIndex = p.activeWeaponIndex;
+                char.bodyColor = p.bodyColor;
+                char.handColor = p.handColor;
+                this.bots.push(char);
+            });
+
+            // Draw bots
+            state.bots.forEach(b => {
+                const char = new Character(b.x, b.y, b.name, true);
+                char.id = b.id;
+                char.rotation = b.rotation;
+                char.health = b.health;
+                char.shield = b.shield;
+                char.active = b.active;
+                char.activeWeaponIndex = b.activeWeaponIndex;
+                char.bodyColor = b.bodyColor;
+                char.handColor = b.handColor;
+                this.bots.push(char);
+            });
+
+            // Sync bullets
+            this.bullets = state.bullets.map(b => new Bullet(b.x, b.y, 0, 0, 0, null, 100, b.color));
+
+            // Sync items
+            this.items = state.items.map(i => new Item(i.x, i.y, i.type, i.detail));
+
+            // Sync safe zone positions
+            this.safeZone = state.safeZone;
+            this.nextZone = state.nextZone;
+            this.aliveCount = state.aliveCount;
+
+        } catch (error) {
+            console.error("Error in syncClientState:", error);
         }
-
-        // Sync active timer
-        const mins = Math.floor(state.stormTimer / 60);
-        const secs = state.stormTimer % 60;
-        const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-        document.getElementById('storm-timer').textContent = timeStr;
-
-        if (this.gameMode === 'deathmatch') {
-            document.getElementById('storm-status-text').textContent = "TIME REMAINING";
-        } else {
-            document.getElementById('storm-status-text').textContent = state.isZoneShrinking ? "SAFE ZONE CONTRACTING" : "SAFE ZONE SHRINKING IN";
-        }
-
-        // Populate all entities for drawing
-        this.bots = [];
-
-        // Draw host player
-        const hostChar = new Character(state.host.x, state.host.y, "Host", false);
-        hostChar.rotation = state.host.rotation;
-        hostChar.health = state.host.health;
-        hostChar.shield = state.host.shield;
-        hostChar.active = state.host.active;
-        hostChar.activeWeaponIndex = state.host.activeWeaponIndex;
-        hostChar.bodyColor = state.host.bodyColor;
-        hostChar.handColor = state.host.handColor;
-        this.bots.push(hostChar);
-
-        // Draw other clients
-        state.players.forEach(p => {
-            if (p.peerId === this.net.peer.id) return;
-            const name = this.net.clientNames[p.peerId] || "Player";
-            const char = new Character(p.x, p.y, name, false);
-            char.rotation = p.rotation;
-            char.health = p.health;
-            char.shield = p.shield;
-            char.active = p.active;
-            char.activeWeaponIndex = p.activeWeaponIndex;
-            char.bodyColor = p.bodyColor;
-            char.handColor = p.handColor;
-            this.bots.push(char);
-        });
-
-        // Draw bots
-        state.bots.forEach(b => {
-            const char = new Character(b.x, b.y, b.name, true);
-            char.rotation = b.rotation;
-            char.health = b.health;
-            char.shield = b.shield;
-            char.active = b.active;
-            char.activeWeaponIndex = b.activeWeaponIndex;
-            char.bodyColor = b.bodyColor;
-            char.handColor = b.handColor;
-            this.bots.push(char);
-        });
-
-        // Sync bullets
-        this.bullets = state.bullets.map(b => new Bullet(b.x, b.y, 0, 0, 0, null, 100, b.color));
-
-        // Sync items
-        this.items = state.items.map(i => new Item(i.x, i.y, i.type, i.detail));
-
-        // Sync safe zone positions
-        this.safeZone = state.safeZone;
-        this.nextZone = state.nextZone;
-        this.aliveCount = state.aliveCount;
     }
 
     broadcastState() {
@@ -2712,32 +2756,37 @@ class GameEngine {
 
         // Build state snapshot
         const state = {
-            players: this.bots.filter(b => !b.isBot).map(p => ({
-                peerId: p.peerConn.peer,
-                x: p.x,
-                y: p.y,
-                rotation: p.rotation,
-                health: p.health,
-                shield: p.shield,
-                activeWeaponIndex: p.activeWeaponIndex,
-                weapons: p.weapons,
-                ammo: p.ammoInMag[p.weapons[p.activeWeaponIndex]],
-                reserve: p.reserveAmmo[p.weapons[p.activeWeaponIndex]],
-                kills: p.kills,
-                deaths: p.deaths || 0,
-                active: p.active,
-                bodyColor: p.bodyColor,
-                handColor: p.handColor
-            })),
+            players: this.bots.filter(b => !b.isBot).map(p => {
+                const activeWeaponKey = p.weapons[p.activeWeaponIndex];
+                return {
+                    id: p.id || (p.peerConn ? p.peerConn.peer : null),
+                    peerId: p.peerConn ? p.peerConn.peer : null,
+                    x: p.x,
+                    y: p.y,
+                    rotation: p.rotation,
+                    health: p.health,
+                    shield: p.shield,
+                    activeWeaponIndex: p.activeWeaponIndex,
+                    weapons: p.weapons,
+                    ammo: activeWeaponKey ? (p.ammoInMag[activeWeaponKey] || 0) : 0,
+                    reserve: activeWeaponKey ? (p.reserveAmmo[activeWeaponKey] || 0) : 0,
+                    kills: p.kills,
+                    deaths: p.deaths || 0,
+                    active: p.active,
+                    bodyColor: p.bodyColor,
+                    handColor: p.handColor
+                };
+            }),
             host: {
+                id: this.player.id || 'host',
                 x: this.player.x,
                 y: this.player.y,
                 rotation: this.player.rotation,
                 health: this.player.health,
                 shield: this.player.shield,
                 activeWeaponIndex: this.player.activeWeaponIndex,
-                ammo: this.player.ammoInMag[this.player.weapons[this.player.activeWeaponIndex]],
-                reserve: this.player.reserveAmmo[this.player.weapons[this.player.activeWeaponIndex]],
+                ammo: this.player.weapons[this.player.activeWeaponIndex] ? (this.player.ammoInMag[this.player.weapons[this.player.activeWeaponIndex]] || 0) : 0,
+                reserve: this.player.weapons[this.player.activeWeaponIndex] ? (this.player.reserveAmmo[this.player.weapons[this.player.activeWeaponIndex]] || 0) : 0,
                 kills: this.player.kills,
                 deaths: this.player.deaths || 0,
                 active: this.player.active,
@@ -2745,6 +2794,7 @@ class GameEngine {
                 handColor: this.player.handColor
             },
             bots: this.bots.filter(b => b.isBot).map(b => ({
+                id: b.id,
                 name: b.name,
                 x: b.x,
                 y: b.y,
@@ -3224,6 +3274,7 @@ class NetworkManager {
             const ry = WORLD_SIZE / 2 + (Math.random() - 0.5) * 80;
             const remotePlayer = new Character(rx, ry, data.name, false);
             remotePlayer.peerConn = conn;
+            remotePlayer.id = conn.peer;
 
             this.game.bots.push(remotePlayer);
             this.game.pushKillFeed("Lobby", `${data.name} connected`, "System");
