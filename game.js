@@ -1669,6 +1669,30 @@ class GameEngine {
     update(deltaTime) {
         if (this.networkRole === 'client') {
             this.sendClientInputs();
+
+            // --- CLIENT-SIDE PREDICTION: locally move player so camera is smooth ---
+            if (this.player && this.player.active) {
+                let dx = 0, dy = 0;
+                if (this.inputs.w) dy -= 1;
+                if (this.inputs.s) dy += 1;
+                if (this.inputs.a) dx -= 1;
+                if (this.inputs.d) dx += 1;
+                if (dx !== 0 && dy !== 0) {
+                    const len = Math.hypot(dx, dy);
+                    dx /= len; dy /= len;
+                }
+                this.player.x += dx * this.player.speed;
+                this.player.y += dy * this.player.speed;
+                // Keep within map boundaries
+                const pad = 40 + this.player.radius;
+                this.player.x = Math.max(pad, Math.min(WORLD_SIZE - pad, this.player.x));
+                this.player.y = Math.max(pad, Math.min(WORLD_SIZE - pad, this.player.y));
+                // Update local aim rotation for HUD
+                const mdx = this.mouse.x - (this.canvas.width / 2);
+                const mdy = this.mouse.y - (this.canvas.height / 2);
+                this.player.rotation = Math.atan2(mdy, mdx);
+            }
+
             // Client only runs local particles and floating text updates
             for (let i = this.particles.length - 1; i >= 0; i--) {
                 this.particles[i].update();
@@ -2657,14 +2681,19 @@ class GameEngine {
             const myState = state.players.find(p => p.id === myId || p.peerId === myPeerId);
             if (myState) {
                 if (this.player) {
-                    this.player.x = myState.x;
-                    this.player.y = myState.y;
+                    // Server reconciliation: only snap position if we are far off (>80px)
+                    // Otherwise let client prediction handle smooth movement
+                    const distSq = (this.player.x - myState.x) ** 2 + (this.player.y - myState.y) ** 2;
+                    if (distSq > 80 * 80 || !myState.active) {
+                        this.player.x = myState.x;
+                        this.player.y = myState.y;
+                    }
                     this.player.health = myState.health;
                     this.player.shield = myState.shield;
                     this.player.kills = myState.kills;
                     this.player.deaths = myState.deaths;
                     this.player.active = myState.active;
-                    
+
                     // Sync inventory, active slot index, and colors authoritative states
                     if (myState.weapons) this.player.weapons = myState.weapons;
                     this.player.activeWeaponIndex = myState.activeWeaponIndex;
@@ -2932,6 +2961,11 @@ class GameEngine {
     sendClientInputs() {
         if (this.networkRole !== 'client' || !this.net.hostConn) return;
 
+        // Throttle to max 20 packets/second (every 50ms) to avoid flooding PeerJS
+        const now = performance.now();
+        if (now - (this._lastInputSend || 0) < 50) return;
+        this._lastInputSend = now;
+
         const dx = this.mouse.x - (this.canvas.width / 2);
         const dy = this.mouse.y - (this.canvas.height / 2);
         const rotation = Math.atan2(dy, dx);
@@ -2945,9 +2979,9 @@ class GameEngine {
                 d: this.inputs.d
             },
             rotation: rotation,
-            weaponIndex: this.player.activeWeaponIndex,
+            weaponIndex: this.player ? this.player.activeWeaponIndex : 0,
             shoot: this.mouse.clickTriggered || false,
-            reload: this.inputs.r,
+            reload: this.inputs.r || false,
             loot: this.inputs.loot || false
         });
 
