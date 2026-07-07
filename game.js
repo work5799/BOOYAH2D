@@ -1374,12 +1374,25 @@ class GameEngine {
 
         const nameInput = document.getElementById('player-name').value.trim();
         const playerName = nameInput || "Survivor";
-        const botCount = parseInt(document.getElementById('bot-count').value);
-        const difficulty = document.getElementById('difficulty').value;
+
+        // Read bot counts dynamically based on networkRole
+        const botCount = this.networkRole === 'host'
+            ? parseInt((document.getElementById('mp-bot-count') || { value: 10 }).value)
+            : parseInt(document.getElementById('bot-count').value);
+
+        // Override bot difficulty to easy in multiplayer to make them weak, or read select in singleplayer
+        const difficulty = this.networkRole === 'host'
+            ? 'easy'
+            : document.getElementById('difficulty').value;
 
         // Fetch new game mode options
-        this.gameMode = document.getElementById('game-mode').value;
-        this.matchDuration = parseInt(document.getElementById('match-duration').value);
+        this.gameMode = this.networkRole === 'host'
+            ? (document.getElementById('mp-game-mode') || { value: 'br' }).value
+            : document.getElementById('game-mode').value;
+
+        this.matchDuration = this.networkRole === 'host'
+            ? parseInt((document.getElementById('mp-match-duration') || { value: 180 }).value)
+            : parseInt(document.getElementById('match-duration').value);
 
         // Clear screens
         document.getElementById('screen-blur').classList.add('fade-out');
@@ -1408,6 +1421,7 @@ class GameEngine {
         // Preserve client players in multiplayer host mode and spawn them at distinct safe spawn points
         const joinedClients = this.bots.filter(b => !b.isBot);
         this.bots = [];
+        this.spawnPoints = {}; // Dictionary of remote client spawn coordinates
         joinedClients.forEach(c => {
             const clientSpawn = this.getRandomSpawnPoint(20);
             c.x = clientSpawn.x;
@@ -1419,6 +1433,7 @@ class GameEngine {
             c.deaths = 0;
             c.weapons = ['pistol', null];
             c.activeWeaponIndex = 0;
+            this.spawnPoints[c.peerConn.peer] = { x: c.x, y: c.y };
             this.bots.push(c);
         });
 
@@ -2504,7 +2519,8 @@ class GameEngine {
                     gameMode: mode,
                     matchDuration: duration,
                     obstacles: this.obstacles.map(o => ({ x: o.x, y: o.y, w: o.w, h: o.h, type: o.type })),
-                    clientNames: this.net.getClientNames()
+                    clientNames: this.net.getClientNames(),
+                    spawnPoints: this.spawnPoints || {}
                 }
             });
         });
@@ -2524,9 +2540,10 @@ class GameEngine {
         document.getElementById('vic-scoreboard-card').classList.add('hidden');
         document.getElementById('det-scoreboard-card').classList.add('hidden');
 
-        // Setup local player character
+        // Setup local player character at authoritative spawn point sent by host
+        const mySpawn = (config.spawnPoints && this.net.peer && config.spawnPoints[this.net.peer.id]) || { x: WORLD_SIZE / 2, y: WORLD_SIZE / 2 };
         const pName = document.getElementById('player-name').value.trim() || "Survivor";
-        this.player = new Player(WORLD_SIZE / 2, WORLD_SIZE / 2, pName);
+        this.player = new Player(mySpawn.x, mySpawn.y, pName);
 
         this.bots = [];
         this.bullets = [];
