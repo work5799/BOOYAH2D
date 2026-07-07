@@ -2177,9 +2177,10 @@ class GameEngine {
         const item = document.createElement('div');
         item.className = 'kill-feed-item';
         
-        if (killer === this.player.name) {
+        const pName = this.player ? this.player.name : "";
+        if (killer === pName) {
             item.className += ' player-kill';
-        } else if (victim === this.player.name) {
+        } else if (victim === pName) {
             item.className += ' player-death';
         }
 
